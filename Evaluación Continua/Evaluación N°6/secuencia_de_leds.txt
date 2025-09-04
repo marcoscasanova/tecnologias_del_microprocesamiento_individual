@@ -1,0 +1,237 @@
+; Secuencia_de_LEDs.asm
+;
+; Created: 3/9/2025 17:28:47
+; Author : Marcos Casanova
+
+.dseg
+modo:      .byte 1
+paso:      .byte 1
+esperar:   .byte 1
+izquierdo: .byte 1
+derecho:   .byte 1
+fase:      .byte 1
+salida:    .byte 1
+
+.cseg
+.org 0x0000
+    rjmp INICIO
+.org OVF1addr
+    rjmp TIMER
+
+INICIO:
+    ldi  r16, high(RAMEND)
+    out  SPH, r16
+    ldi  r16, low(RAMEND)
+    out  SPL, r16
+
+    ldi  r16, 0b11111100
+    out  DDRD, r16
+    ldi  r16, 0b00000011
+    out  DDRB, r16
+
+    ldi  r16, 0x01
+    sts  salida, r16
+    rcall OUT_MAP
+
+    clr  r1
+    sts  modo,      r1
+    sts  paso,      r1
+    sts  esperar,   r1
+    sts  izquierdo, r1
+    sts  derecho,   r1
+    sts  fase,      r1
+
+    rcall RECARGAR
+    ldi  r16, (1<<CS12)
+    sts  TCCR1B, r16
+    ldi  r16, (1<<TOIE1)
+    sts  TIMSK1, r16
+    sei
+
+BUCLE:
+    rjmp BUCLE
+
+TIMER:
+    rcall RECARGAR
+    lds  r18, modo
+
+    cpi  r18, 0
+    brne _m1
+    rjmp IZQUIERDA
+_m1:
+    cpi  r18, 1
+    brne _m2
+    rjmp PAUSA1
+_m2:
+    cpi  r18, 2
+    brne _m3
+    rjmp COLA
+_m3:
+    cpi  r18, 3
+    brne _m4
+    rjmp PAUSA2
+_m4:
+    cpi  r18, 4
+    brne _mfin
+    rjmp CENTRO
+_mfin:
+    reti
+
+SET_MODO:
+    sts  modo,    r24
+    sts  paso,    r1
+    sts  esperar, r1
+    mov  r16,     r25
+    sts  salida,  r16
+    rcall OUT_MAP
+    ret
+
+OUT_MAP:
+    lds  r16, salida
+
+    com  r16
+
+    mov  r17, r16
+    andi r17, 0x3F
+    lsl  r17
+    lsl  r17
+    out  PORTD, r17
+
+    mov  r18, r16
+    lsr  r18
+    lsr  r18
+    lsr  r18
+    lsr  r18
+    lsr  r18
+    lsr  r18
+    andi r18, 0x03
+    out  PORTB, r18
+    ret
+
+SHIFT:
+
+    lds  r16, salida
+    lsl  r16
+    tst  r17
+    breq NO_FORZAR
+    ori  r16, 0x01
+NO_FORZAR:
+    sts  salida, r16
+    rcall OUT_MAP
+    inc  r19
+    sts  paso, r19
+    ret
+
+RECARGAR:
+    ldi  r16, high(3036)
+    sts  TCNT1H, r16
+    ldi  r16, low(3036)
+    sts  TCNT1L, r16
+    ret
+
+IZQUIERDA:
+    lds  r19, paso
+    cpi  r19, 7
+    brlo IZQ_SIG
+    ldi  r24, 1
+    ldi  r25, 0x00
+    rcall SET_MODO
+    reti
+IZQ_SIG:
+    ldi  r17, 0
+    rcall SHIFT
+    reti
+
+PAUSA1:
+    lds  r19, esperar
+    inc  r19
+    sts  esperar, r19
+    cpi  r19, 3
+    brlo P1_RET
+    ldi  r24, 2
+    ldi  r25, 0x01
+    rcall SET_MODO
+P1_RET:
+    reti
+
+COLA:
+    lds  r19, paso
+    cpi  r19, 7
+    brlo COLA_SIG
+    ldi  r24, 3
+    ldi  r25, 0x00
+    rcall SET_MODO
+    reti
+COLA_SIG:
+    ldi  r17, 1
+    rcall SHIFT
+    reti
+
+PAUSA2:
+    lds  r19, esperar
+    inc  r19
+    sts  esperar, r19
+    cpi  r19, 3
+    brlo P2_RET
+
+    ldi  r16, 0x01
+    sts  izquierdo, r16
+    ldi  r16, 0x80
+    sts  derecho,  r16
+    sts  fase,     r1
+
+    ldi  r24, 4
+    ldi  r25, 0x00
+    rcall SET_MODO
+P2_RET:
+    reti
+
+CENTRO:
+    lds  r19, paso
+    cpi  r19, 8
+    brlo C_SIG
+
+    ldi  r16, 0x00
+    sts  salida, r16
+    rcall OUT_MAP
+    ldi  r16, 5
+    sts  modo, r16
+    reti
+
+C_SIG:
+    lds  r21, izquierdo
+    lds  r22, derecho
+    mov  r16, r21
+    or   r16, r22
+    sts  salida, r16
+    rcall OUT_MAP
+
+    lds  r23, fase
+    cpi  r23, 0
+    brne C_EXT
+
+    cpi  r16, 0x18
+    breq C_CAMBIO
+    lsl  r21
+    lsr  r22
+    sts  izquierdo, r21
+    sts  derecho,  r22
+    rjmp C_NEXT
+
+C_CAMBIO:
+    ldi  r23, 1
+    sts  fase, r23
+    rjmp C_NEXT
+
+C_EXT:
+    cpi  r16, 0x81
+    breq C_NEXT
+    lsr  r21
+    lsl  r22
+    sts  izquierdo, r21
+    sts  derecho,  r22
+
+C_NEXT:
+    inc  r19
+    sts  paso, r19
+    reti
