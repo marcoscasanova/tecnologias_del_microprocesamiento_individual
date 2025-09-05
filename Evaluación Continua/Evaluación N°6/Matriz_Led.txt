@@ -1,3 +1,191 @@
-hsbdiasbdasida
-vssd
+;Tomando en cuenta a trabajar con la matriz del display
+;--------------- Definiciones de puertos -----------------
+.equ COL_DDR  = DDRD
+.equ COL_PORT = PORTD          ; D1..D8
+.equ ROW_DDR  = DDRC
+.equ ROW_PORT = PORTC          ; PC0..PC3 = A,B,C,D
+
+; --- Polaridad de columnas (0xFF = activas en LOW, 0x00 = activas en HIGH)
+.equ COL_INV_MASK = 0xFF       ; <-- si tu panel es activo-ALTO, cambia a 0x00
+
+; --- Tiempo con Timer0: 16 MHz / 1024 = 15625 Hz
+;     Tov = 256 / 15625 = 16.384 ms -> para 2 s ≈ 122 desbordes
+.equ T0_OVF_2S = 122
+
+;--------------- Registros de trabajo --------------------
+.def rTmp    = r16
+.def rCol    = r17
+.def rRow    = r18
+.def rMask   = r19
+.def rOvf    = r20
+.def figL    = r24            ; Z base de la figura (L)
+.def figH    = r25            ; Z base de la figura (H)
+
+;=========================================================
+;  Vectores
+;=========================================================
+.org 0x0000
+    rjmp RESET
+
+;=========================================================
+;  RESET / Inicialización
+;=========================================================
+RESET:
+    ; Stack Pointer (obligatorio si hay subrutinas)  (SPH/SPL)
+    ldi     rTmp, HIGH(RAMEND)
+    out     SPH, rTmp
+    ldi     rTmp, LOW(RAMEND)
+    out     SPL, rTmp                     ; :contentReference[oaicite:3]{index=3}
+
+    ; Puertos
+    ldi     rTmp, 0xFF
+    out     COL_DDR, rTmp                 ; PORTD como salida (8 columnas)
+    ldi     rTmp, COL_INV_MASK            ; columnas "apagadas" según polaridad
+    out     COL_PORT, rTmp
+
+    in      rTmp, ROW_DDR
+    ori     rTmp, 0x0F
+    out     ROW_DDR, rTmp                 ; PC0..PC3 (A..D) como salida
+
+    ; Timer0 en modo normal, prescaler 1024
+    ldi     rTmp, 0x00
+    out     TCCR0A, rTmp
+    ldi     rTmp, (1<<CS02)|(1<<CS00)     ; clk/1024
+    out     TCCR0B, rTmp                  ; :contentReference[oaicite:4]{index=4}
+    ldi     rTmp, (1<<TOV0)
+    out     TIFR0, rTmp                   ; limpia flag de overflow
+
+    ; Guarda máscara de polaridad en registro
+    ldi     rMask, COL_INV_MASK
+
+;=========================================================
+;  MAIN
+;=========================================================
+MAIN:
+    ; Alien
+    ldi     ZL, low(FIG_ALIEN*2)
+    ldi     ZH, high(FIG_ALIEN*2)
+    rcall   SHOW_FIG_2S
+
+    ; Corazón
+    ldi     ZL, low(FIG_HEART*2)
+    ldi     ZH, high(FIG_HEART*2)
+    rcall   SHOW_FIG_2S
+
+    ; Rombo
+    ldi     ZL, low(FIG_DIAMOND*2)
+    ldi     ZH, high(FIG_DIAMOND*2)
+    rcall   SHOW_FIG_2S
+
+    rjmp    MAIN
+
+;=========================================================
+;  SHOW_FIG_2S
+;  - Z apunta a 8 bytes en FLASH (fila 0..7: arriba->abajo)
+;  - Mantiene la imagen 2 s mientras multiplexa filas 0..7
+;=========================================================
+SHOW_FIG_2S:
+    ; guarda base de la figura
+    mov     figL, ZL
+    mov     figH, ZH
+
+    ; reinicia contador de overflows
+    clr     rOvf
+    ldi     rTmp, 0
+    out     TCNT0, rTmp
+    ldi     rTmp, (1<<TOV0)
+    out     TIFR0, rTmp
+
+._frame:
+    ; ¿se cumplieron 2 s?
+    in      rTmp, TIFR0
+    sbrs    rTmp, TOV0
+    rjmp    ._scan8
+    ldi     rTmp, (1<<TOV0)               ; limpia flag TOV0
+    out     TIFR0, rTmp
+    inc     rOvf
+    cpi     rOvf, T0_OVF_2S
+    brlo    ._scan8
+    ret                                    ; 2 segundos cumplidos
+
+._scan8:
+    ; recarga puntero Z a inicio de figura
+    mov     ZL, figL
+    mov     ZH, figH
+
+    clr     rRow                           ; rRow = 0..7
+._row_loop:
+    ; --- Selección de fila: A..D = rRow (A=LSB, D=MSB) ---
+    in      rTmp, ROW_PORT
+    andi    rTmp, 0xF0                     ; limpia nibble bajo
+    or      rTmp, rRow                     ; pone ABCD = rRow
+    out     ROW_PORT, rTmp
+
+    ; --- Byte de columnas para esta fila (FLASH) ---
+    lpm     rCol, Z+                       ; patrón 8 bits (D1..D8)
+    eor     rCol, rMask                    ; invierte si columnas activas-LOW
+    out     COL_PORT, rCol
+
+    ; --- pequeño hold para brillo/estabilidad ---
+    rcall   ROW_HOLD
+
+    ; apaga columnas (según polaridad)
+    mov     rTmp, rMask
+    out     COL_PORT, rTmp
+
+    inc     rRow
+    cpi     rRow, 8
+    brlo    ._row_loop
+
+    rjmp    ._frame
+
+;=========================================================
+;  ROW_HOLD: retardo corto (~200 us aprox @16 MHz)
+;=========================================================
+ROW_HOLD:
+    ldi     rTmp, 100
+._h1:
+    nop
+    dec     rTmp
+    brne    ._h1
+    ret
+
+;=========================================================
+;  Datos de las figuras (8 bytes por figura, fila 0..7)
+;  1 = LED encendido en esa columna (D1 = bit0 ... D8 = bit7)
+;  Si te queda invertido u “espejado”, invierte COL_INV_MASK
+;  o reordena los bits de cada byte.
+;=========================================================
+; Alien (Space Invaders) - aproximación 8x8
+FIG_ALIEN:
+    .db 0b00011000  ; fila 0 (top)
+    .db 0b00111100
+    .db 0b01111110
+    .db 0b11011011
+    .db 0b11111111
+    .db 0b00100100
+    .db 0b01000010
+    .db 0b10000001  ; fila 7 (bottom)
+
+; Corazón 8x8 (simétrico)
+FIG_HEART:
+    .db 0b01100110
+    .db 0b11111111
+    .db 0b11111111
+    .db 0b11111111
+    .db 0b01111110
+    .db 0b00111100
+    .db 0b00011000
+    .db 0b00000000
+
+; Rombo (diamond) 8x8
+FIG_DIAMOND:
+    .db 0b00011000
+    .db 0b00111100
+    .db 0b01111110
+    .db 0b11111111
+    .db 0b01111110
+    .db 0b00111100
+    .db 0b00011000
+    .db 0b00000000
 
