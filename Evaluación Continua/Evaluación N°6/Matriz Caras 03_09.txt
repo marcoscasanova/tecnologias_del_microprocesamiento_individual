@@ -1,0 +1,147 @@
+; ===========================================
+; Matriz 8x8 – Activo en BAJO (0 = LED ON)
+; Columnas -> PORTB (PB0..PB7)
+; Filas ABCD -> PORTD[3:0] (PD0=A ... PD3=D)
+; Invertido desde el origen:
+;   - Tablas invertidas (los que antes eran 1 ahora 0)
+;   - ABCD invertido: ~row & 0x0F
+; ===========================================
+
+.include "m328pdef.inc"
+
+; ---------- Registros ----------
+.def tmp  = r16
+.def row  = r17
+.def pat  = r18
+.def cnt  = r19
+
+; ---------- Vector de reset ----------
+.cseg
+.org 0x0000
+  rjmp RESET
+
+; ---------- Tablas INVERTIDAS (8 bytes = 8 filas)
+; Antes: bit=1 significaba LED encendido (lógico)
+; Ahora: ya están NEGADAS para trabajar activo-en-bajo SIN com al final
+; Cara Feliz (invertida)
+CaraFeliz:
+  .db 0b11111111 ; fila 0 (antes 00000000)
+  .db 0b11000011 ; fila 1 (antes 00111100)
+  .db 0b10111101 ; fila 2 (antes 01000010)
+  .db 0b11111111 ; fila 3 (antes 00000000)
+  .db 0b11111111 ; fila 4 (antes 00000000)
+  .db 0b11011011 ; fila 5 (antes 00100100)
+  .db 0b11011011 ; fila 6 (antes 00100100)
+  .db 0b11111111 ; fila 7 (antes 00000000)
+
+; Cara Triste (invertida)
+CaraTriste:
+  .db 0b11111111 ; fila 0 (antes 00000000)
+  .db 0b11111111 ; fila 1 (antes 00000000)
+  .db 0b10111101 ; fila 2 (antes 01000010)
+  .db 0b11000011 ; fila 3 (antes 00111100)
+  .db 0b11111111 ; fila 4 (antes 00000000)
+  .db 0b11011011 ; fila 5 (antes 00100100)
+  .db 0b11011011 ; fila 6 (antes 00100100)
+  .db 0b11111111 ; fila 7 (antes 00000000)
+
+; ===========================================
+;                 RESET
+; ===========================================
+RESET:
+  ; Stack
+  ldi tmp, high(RAMEND)
+  out SPH, tmp
+  ldi tmp, low(RAMEND)
+  out SPL, tmp
+  clr r1
+
+  ; DDRs
+  ldi tmp, 0xFF
+  out DDRB, tmp          ; PORTB = salidas (columnas)
+  ldi tmp, 0x0F
+  out DDRD, tmp          ; PD3..PD0 = salidas (ABCD)
+
+  ; Estados iniciales (activo en BAJO => columnas "apagadas" en 1)
+  ldi tmp, 0xFF
+  out PORTB, tmp         ; columnas OFF
+  ldi tmp, 0x0F
+  out PORTD, tmp         ; ABCD inicialmente 1111 (sin fila válida)
+
+; ===========================================
+;                MAIN LOOP
+; ===========================================
+MainLoop:
+  ; ---- Feliz ~1 s ----
+  ldi ZH, high(CaraFeliz<<1)
+  ldi ZL, low(CaraFeliz<<1)
+  ldi cnt, 120
+ML_Feliz:
+  rcall ShowFrameFromZ
+  dec cnt
+  brne ML_Feliz
+
+  ; ---- Triste ~1 s ----
+  ldi ZH, high(CaraTriste<<1)
+  ldi ZL, low(CaraTriste<<1)
+  ldi cnt, 120
+ML_Triste:
+  rcall ShowFrameFromZ
+  dec cnt
+  brne ML_Triste
+
+  rjmp MainLoop
+
+; ===========================================
+;   ShowFrameFromZ: muestra 8 filas desde Z
+;   (Tablas ya invertidas; columnas activo-en-bajo)
+;   ABCD invertido: ~row & 0x0F
+; ===========================================
+ShowFrameFromZ:
+  ldi row, 0
+SF_Fila:
+  ; 1) Apagar columnas ANTES de cambiar fila (activo-bajo => 0xFF)
+  ldi tmp, 0xFF
+  out PORTB, tmp
+
+  ; 2) Seleccionar fila -> ABCD invertido
+  ;    PD3..PD0 = NOT(row[3:0])
+  mov tmp, row
+  com tmp
+  andi tmp, 0x0F
+  out PORTD, tmp
+
+  ; 3) pat = tabla[row] (FLASH)  [ya invertida]
+  push ZH
+  push ZL
+  add  ZL, row
+  adc  ZH, r1
+  lpm  pat, Z
+  pop  ZL
+  pop  ZH
+
+  ; 4) Escribir columnas (activo-bajo, tabla ya negada)
+  out PORTB, pat
+
+  ; 5) Hold de fila
+  rcall DelayRow
+
+  ; 6) Siguiente fila
+  inc row
+  cpi row, 8
+  brlo SF_Fila
+  ret
+
+; ===========================================
+; DelayRow: ~1 ms aprox @16 MHz
+; ===========================================
+DelayRow:
+  ldi r20, 20
+DR_L1:
+  ldi r21, 200
+DR_L2:
+  dec r21
+  brne DR_L2
+  dec r20
+  brne DR_L1
+  ret
