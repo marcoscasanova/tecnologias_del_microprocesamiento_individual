@@ -1,0 +1,158 @@
+; ===========================================
+; Matriz 8x8 - 16 pines (8 filas + 8 columnas)
+; uC: ATmega328P @ 16 MHz
+; Filas  -> PORTD (PD0..PD7)  [1 = fila seleccionada]
+; Columnas -> PORTB (PB0..PB7)[0 = LED encendido]
+; ===========================================
+
+.include "m328pdef.inc"
+
+; ---- Registros ----
+.def tmp   = r16
+.def row   = r17
+.def pat   = r18
+.def cnt   = r19
+.def rmask = r20   ; máscara one-hot de fila
+
+; ---- Vector de reset ----
+.cseg
+.org 0x0000
+  rjmp RESET
+
+; ---- Tablas (8 bytes = 8 filas, bit 1 = LED lógico ON en esa columna) ----
+; Nota: como columnas son activas en BAJO, haremos 'com pat' antes de PORTB
+
+; Cara Feliz
+CaraFeliz:
+  .db 0b00000000 ; fila 0 (abajo)
+  .db 0b00111100 ; fila 1 (boca)
+  .db 0b01000010 ; fila 2 (boca)
+  .db 0b00000000 ; fila 3
+  .db 0b00000000 ; fila 4
+  .db 0b00100100 ; fila 5 (ojos)
+  .db 0b00100100 ; fila 6 (ojos)
+  .db 0b00000000 ; fila 7 (arriba)
+
+; Cara Triste
+CaraTriste:
+  .db 0b00000000 ; fila 0
+  .db 0b00000000 ; fila 1
+  .db 0b01000010 ; fila 2 (boca)
+  .db 0b00111100 ; fila 3 (boca)
+  .db 0b00000000 ; fila 4
+  .db 0b00100100 ; fila 5 (ojos)
+  .db 0b00100100 ; fila 6 (ojos)
+  .db 0b00000000 ; fila 7
+
+; ===========================================
+;                 RESET
+; ===========================================
+RESET:
+  ; Stack
+  ldi tmp, high(RAMEND)
+  out SPH, tmp
+  ldi tmp, low(RAMEND)
+  out SPL, tmp
+  clr r1
+
+  ; DDRs
+  ldi tmp, 0xFF
+  out DDRB, tmp          ; Columnas PB7..PB0 = salidas
+  ldi tmp, 0xFF
+  out DDRD, tmp          ; Filas PD7..PD0 = salidas (one-hot)
+
+  ; Estados iniciales
+  ldi tmp, 0xFF
+  out PORTB, tmp         ; Columnas OFF (activo-bajo => 1 apaga)
+  ldi tmp, 0x00
+  out PORTD, tmp         ; Ninguna fila seleccionada
+
+; ===========================================
+;                 MAIN LOOP
+; ===========================================
+MainLoop:
+  ; ---- Feliz ~1 s ----
+  ldi ZH, high(CaraFeliz<<1)
+  ldi ZL, low(CaraFeliz<<1)
+  ldi cnt, 120
+ML_Feliz:
+  rcall ShowFrameFromZ
+  dec cnt
+  brne ML_Feliz
+
+  ; ---- Triste ~1 s ----
+  ldi ZH, high(CaraTriste<<1)
+  ldi ZL, low(CaraTriste<<1)
+  ldi cnt, 120
+ML_Triste:
+  rcall ShowFrameFromZ
+  dec cnt
+  brne ML_Triste
+
+  rjmp MainLoop
+
+; ===========================================
+; ShowFrameFromZ: muestra 1 frame (8 filas) desde Z
+; Filas: one-hot en PORTD (1 = seleccionada)
+; Columnas: activo-bajo (com pat antes de PORTB)
+; ===========================================
+ShowFrameFromZ:
+  ldi row, 0
+SF_NextRow:
+  ; 1) Apagar columnas antes de cambiar de fila (evita ghosting)
+  ldi tmp, 0xFF
+  out PORTB, tmp
+
+  ; 2) Seleccionar FILA (one-hot): rmask = (1 << row)
+  ldi rmask, 1
+  mov tmp, row
+  tst tmp
+  breq SF_RowReady
+SF_Shift:
+  lsl rmask
+  dec tmp
+  brne SF_Shift
+SF_RowReady:
+  out PORTD, rmask       ; Activa SOLO esa fila (1 en esa PDn)
+
+  ; 3) pat = tabla[row] desde FLASH
+  push ZH
+  push ZL
+  add  ZL, row
+  adc  ZH, r1
+  lpm  pat, Z
+  pop  ZL
+  pop  ZH
+
+  ; 4) Columnas activas en BAJO: 1 lógico -> 0 físico
+  com pat
+  out PORTB, pat
+
+  ; 5) Hold de fila
+  rcall DelayRow
+
+  ; 6) Siguiente fila (0..7)
+  inc row
+  cpi row, 8
+  brlo SF_NextRow
+
+  ; (opcional) al terminar el frame, limpia
+  ldi tmp, 0x00
+  out PORTD, tmp
+  ldi tmp, 0xFF
+  out PORTB, tmp
+  ret
+
+; ===========================================
+; DelayRow: ~1 ms aprox @16 MHz (burdo)
+; ===========================================
+DelayRow:
+  ldi r22, 20
+DR_L1:
+  ldi r23, 200
+DR_L2:
+  dec r23
+  brne DR_L2
+  dec r22
+  brne DR_L1
+  ret
