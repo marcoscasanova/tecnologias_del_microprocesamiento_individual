@@ -3,33 +3,34 @@
 ; Author: Marcos Casanova, Luis Bouvier, Santiago Moizo
 
 .equ F_CPU = 16000000					;Se define el valor de la variable F_CPU (frecuencia del microcontrolador)
-.equ baud = 9600						;Se define el valor de la variable baud ()
+.equ baud = 9600						;Se define el valor de la variable baud (baudios)
 .equ bps = (F_CPU/16/baud) - 1			;Se define el valor de la variable bps (baudios por segundo) como el resultado de la operación indicada
+
+.dseg									;Inicio del segmento de datos en RAM
+pos: .byte 1							;Reserva 1 byte en memoria de datos para la variable pos (posición del mensaje)
+modo: .byte 1							;Reserva 1 byte en memoria de datos para la variable modo (modo de funcionamiento)
 
 .cseg									;Inicio del segmento de instrucciones
 .org 0x00								;Direccion de inicio
     rjmp INICIO							;Salto relativo a etiqueta INICIO
 
 INICIO:									
-;Inicialización del stack pointer
-    ldi r16, LOW(RAMEND)
-    out SPL, r16
-    ldi r16, HIGH(RAMEND)
-    out SPH, r16
-
-    clr r1								;Limpia el registro r1 para eliminar y/o evitar residuos temporales
+	ldi r16, LOW(RAMEND)				;Carga la parte baja de la dirección final de RAM en r16
+	out SPL, r16						;Configura el registro SPL (Stack Pointer Low) con ese valor
+	ldi r16, HIGH(RAMEND)				;Carga la parte alta de la dirección final de RAM en r16
+	out SPH, r16						;Configura el registro SPH (Stack Pointer High) con ese valor
 
     ldi r16, 0xFC						;Carga inmediatamente el valor hexadecimal FC en el registro r16
     out DDRD, r16						;Asigna como salida los pines PD2, PD3, PD4, PD5, PD6 y PD7.
-    clr r16								;Limpia el registro r16 para eliminar y/o evitar residuos temporales
+    ldi r16, 0x00						;Carga inmediatamente el valor hexadecimal 00 en el registro r16
     out PORTD, r16						;Pone en nivel bajo los pines configurados como salida del puerto D
     ldi r16, 0x3F						;Carga inmediatamente el valor hexadecimal 3F en el registro r16
     out DDRB, r16						;Asigna como salida los pines PB0, PB1, PB2, PB3, PB4 y PB5
     ldi r16, 0x3C						;Carga inmediatamente el valor hexadecimal 3C en el registro r16
-    out PORTB, r16						;Pone en nivel bajo los pines configurados como salida del puerto B
+    out PORTB, r16						;Pone en nivel alto los pines configurados como salida del puerto B
     ldi r16, 0b0F						;Carga inmediatamente el valor hexadecimal 0F en el registro r16
     out DDRC, r16						;Asigna como salida los pines PC0, PC1, PC2 y PC3
-    out PORTC, r16						;Pone en nivel bajo los pines configurados como salida del puerto C
+    out PORTC, r16						;Pone en nivel alto los pines configurados como salida del puerto C
 
     clr r17								;Limpia el registro r17 para eliminar y/o evitar residuos temporales
 
@@ -47,7 +48,6 @@ INICIO:
 
     ldi ZH, HIGH(BIENVENIDA*2)			;Carga en ZH la parte alta de la dirección del mensaje de bienvenida
     ldi ZL, LOW(BIENVENIDA*2)			;Carga en ZL la parte baja de la dirección del mensaje de bienvenida
-
 
 TX_LOOP:
     lpm r16, Z+						    ;Carga un byte desde la memoria de programa (tabla apuntada por Z) en r16 y luego incrementa Z
@@ -69,15 +69,15 @@ NO_UART:
     cpi r16, 'M'						;Compara r16 con el carácter 'M' (Mensaje)
     breq MOSTRAR_MENSAJE				;Si r16 = M, salta a MOSTRAR_MENSAJE; si no, continúa
     cpi r16, '1'						;Compara r16 con el carácter '1' (Cara feliz)
-    breq FIGURA1						;Si r16 = 1, salta a FIGURA1; si no, continúa
+    breq FIGURA_1						;Si r16 = 1, salta a FIGURA_1; si no, continúa
     cpi r16, '2'						;Compara r16 con el carácter '2' (Cara triste)
-    breq FIGURA2						;Si r16 = 2, salta a FIGURA2; si no, continúa
+    breq FIGURA_2						;Si r16 = 2, salta a FIGURA_2; si no, continúa
     cpi r16, '3'						;Compara r16 con el carácter '3' (Corazón)
-    breq FIGURA3						;Si r16 = 3, salta a FIGURA3; si no, continúa
+    breq FIGURA_3						;Si r16 = 3, salta a FIGURA_3; si no, continúa
     cpi r16, '4'						;Compara r16 con el carácter '4' (Rombo)
-    breq FIGURA4						;Si r16 = 4, salta a FIGURA4; si no, continúa
+    breq FIGURA_4						;Si r16 = 4, salta a FIGURA_4; si no, continúa
     cpi r16, '5'						;Compara r16 con el carácter '5' (Alien)
-    breq FIGURA5						;Si r16 = 5, salta a FIGURA5; si no, continúa
+    breq FIGURA_5						;Si r16 = 5, salta a FIGURA_5; si no, continúa
     rjmp MAIN_LOOP						;Salto relativo a la etiqueta MAIN_LOOP
 
 MOSTRAR_MENSAJE:
@@ -93,43 +93,43 @@ MSG_WAIT_LOOP:
     brne MSG_WAIT_LOOP					;Salta a MSG_WAIT_LOOP si r24 es distinto de 0
     lds r17, pos						;Carga directamente el valor de pos en el registro r17
     inc r17								;Incrementa el valor del registro r17
-    cpi r17, MSG_LEN					;Compara inmediatamente el contenido de la constante MSG_LEN con el valor del registro r17
-    brlo NO_FIN							;Si el valor de r17 es menor al de MSG_LEN, salta a la etiqueta NO_FIN, sino, continúa
+    cpi r17, TAMANO_MENSAJE				;Compara inmediatamente el contenido de la constante TAMANO_MENSAJE con el valor del registro r17
+    brlo NO_FIN							;Si el valor de r17 es menor al de TAMANO_MENSAJE, salta a la etiqueta NO_FIN, sino, continúa
     rcall APAGAR_DISPLAY				;Se hace una llamada relativa a la subrutina APAGAR_DISPLAY
-    sts pos, r17						;Se carga directamente el valor del registro r17 en la variable pos (posición del mensaje)
+    sts pos, r17						;Guarda directamente el valor del registro r17 en la variable pos (posición del mensaje)
     clr r16								;Limpia el registro r16 para reiniciar el modo
-    sts modo, r16						;Se carga directamente el valor del registro r16 en la variable modo
+    sts modo, r16						;Guarda directamente el valor del registro r16 en la variable modo
     rjmp MENU							;Salto relativo a la etiqueta MENU
 
 NO_FIN:
     sts pos, r17						;Guarda directamente el valor del registro r17 en la variable pos (posición del mensaje)
     rjmp MSG_LOOP						;Salto relativo a la etiqueta MSG_LOOP
 
-FIGURA1:
+FIGURA_1:
     ldi ZH, HIGH(CARA_FELIZ*2)			;Carga inmediatamente la parte alta de la dirección de la figura CARA_FELIZ en ZH
     ldi ZL, LOW(CARA_FELIZ*2)			;Carga inmediatamente la parte baja de la dirección de la figura CARA_FELIZ en ZL
     rcall MULTIPLEX_DISPLAY				;Hace una llamada relativa a la subrutina MULTIPLEX_DISPLAY
     rjmp MAIN_LOOP						;Salto relativo a la etiqueta MAIN_LOOP
 
-FIGURA2:
+FIGURA_2:
     ldi ZH, HIGH(CARA_TRISTE*2)			;Carga inmediatamente la parte alta de la dirección de la figura CARA_TRISTE en ZH
     ldi ZL, LOW(CARA_TRISTE*2)			;Carga inmediatamente la parte baja de la dirección de la figura CARA_TRISTE en ZL
     rcall MULTIPLEX_DISPLAY				;Hace una llamada relativa a la subrutina MULTIPLEX_DISPLAY
     rjmp MAIN_LOOP						;Salto relativo a la etiqueta MAIN_LOOP
 
-FIGURA3:
+FIGURA_3:
     ldi ZH, HIGH(CORAZON*2)				;Carga inmediatamente la parte alta de la dirección de la figura CORAZON en ZH
     ldi ZL, LOW(CORAZON*2)				;Carga inmediatamente la parte baja de la dirección de la figura CORAZON en ZL
     rcall MULTIPLEX_DISPLAY				;Hace una llamada relativa a la subrutina MULTIPLEX_DISPLAY
     rjmp MAIN_LOOP						;Salto relativo a la etiqueta MAIN_LOOP
 
-FIGURA4:
+FIGURA_4:
     ldi ZH, HIGH(ROMBO*2)				;Carga inmediatamente la parte alta de la dirección de la figura ROMBO en ZH
     ldi ZL, LOW(ROMBO*2)				;Carga inmediatamente la parte baja de la dirección de la figura ROMBO en ZL
     rcall MULTIPLEX_DISPLAY				;Hace una llamada relativa a la subrutina MULTIPLEX_DISPLAY
     rjmp MAIN_LOOP						;Salto relativo a la etiqueta MAIN_LOOP
 
-FIGURA5:
+FIGURA_5:
     ldi ZH, HIGH(ALIEN*2)				;Carga inmediatamente la parte alta de la dirección de la figura ALIEN en ZH
     ldi ZL, LOW(ALIEN*2)				;Carga inmediatamente la parte baja de la dirección de la figura ALIEN en ZL
     rcall MULTIPLEX_DISPLAY				;Hace una llamada relativa a la subrutina MULTIPLEX_DISPLAY
@@ -154,7 +154,7 @@ REFRESCAR:
     add ZL, r17							;Suma el valor de r17 al registro ZL
     adc ZH, r1							;Suma con acarreo el valor del registro r1 al registro ZH
     ldi r20, 0							;Carga inmediatamente el valor 0 en r20 (contador de columnas)
-    rjmp REFRESH_COL_LOOP				;Salto relativo a la etiqueta REFRESH_COL_LOOP
+    rjmp REFRESCAR_COLUMNAS				;Salto relativo a la etiqueta REFRESCAR_COLUMNAS
 
 MULTIPLEX_DISPLAY:
     push r16							;Guarda en la pila el valor actual del registro r16
@@ -164,7 +164,7 @@ MULTIPLEX_DISPLAY:
     push r20							;Guarda en la pila el valor actual del registro r20
     ldi r20, 0							;Carga inmediatamente el valor 0 en r20 (contador de columnas)
 
-REFRESH_COL_LOOP:
+REFRESCAR_COLUMNAS:
     lpm r19, Z+							;Carga un byte desde la memoria de programa (puntero Z) en r19 e incrementa Z
     in r18, PORTD						;Carga directamente el valor actual de PORTD en r18
     andi r18, 0b00000011				;Mantiene únicamente los 2 bits menos significativos de r18
@@ -191,23 +191,10 @@ REFRESH_COL_LOOP:
     andi r18, 0b11110000				;Mantiene únicamente los 4 bits más significativos de r18
     or r18, r16							;Combina el contenido del registro r16 con el de r18
     out PORTC, r18						;Guarda directamente el valor de r18 en PORTC
-    rcall SELECT_COLUMN					;Hace una llamada relativa a la subrutina SELECT_COLUMN
+    rcall SELECCIONAR_COLUMNA			;Hace una llamada relativa a la subrutina SELECCIONAR_COLUMNA
     ldi r16, 200						;Carga inmediatamente el valor 200 en r16 (contador de retardo)
 
-RC_DELAY:
-    dec r16								;Decrementa el valor del registro r16
-    brne RC_DELAY						;Salta a RC_DELAY si r16 es distinto de 0
-    inc r20								;Incrementa el valor del registro r20 (contador de columnas)
-    cpi r20, 8							;Compara inmediatamente el valor de r20 con 8
-    brlo REFRESH_COL_LOOP				;Si el valor de r20 es menor que 8, salta a REFRESH_COL_LOOP
-    pop r20								;Restaura el valor original del registro r20 desde la pila
-    pop r19								;Restaura el valor original del registro r19 desde la pila
-    pop r18								;Restaura el valor original del registro r18 desde la pila
-    pop r17								;Restaura el valor original del registro r17 desde la pila
-    pop r16								;Restaura el valor original del registro r16 desde la pila
-    ret									;Retorno de la subrutina
-
-SELECT_COLUMN:
+SELECCIONAR_COLUMNA:
     cpi r20, 0							;Compara inmediatamente el valor de r20 con 0
     breq SC0							;Si r20 = 0, salta a SC0
     cpi r20, 1							;Compara inmediatamente el valor de r20 con 1
@@ -246,6 +233,19 @@ SC5: sbi PORTD, PD7						;Setea en alto el pin PD7 (columna 5)
 SC6: sbi PORTB, PB0						;Setea en alto el pin PB0 (columna 6)
     ret									;Retorno de la subrutina
 
+DELAY:
+    dec r16								;Decrementa el valor del registro r16
+    brne DELAY							;Salta a DELAY si r16 es distinto de 0
+    inc r20								;Incrementa el valor del registro r20 (contador de columnas)
+    cpi r20, 8							;Compara inmediatamente el valor de r20 con 8
+    brlo REFRESCAR_COLUMNAS				;Si el valor de r20 es menor que 8, salta a REFRESCAR_COLUMNAS
+    pop r20								;Restaura el valor original del registro r20 desde la pila
+    pop r19								;Restaura el valor original del registro r19 desde la pila
+    pop r18								;Restaura el valor original del registro r18 desde la pila
+    pop r17								;Restaura el valor original del registro r17 desde la pila
+    pop r16								;Restaura el valor original del registro r16 desde la pila
+    ret									;Retorno de la subrutina
+
 APAGAR_DISPLAY:
     in r16, PORTD						;Carga directamente el valor actual de PORTD en r16
     andi r16, 0b00000011				;Mantiene únicamente los 2 bits menos significativos de r16
@@ -260,13 +260,6 @@ APAGAR_DISPLAY:
     ori r16, 0b00001111					;Setea en alto los bits PC0..PC3
     out PORTC, r16						;Guarda directamente el valor de r16 en PORTC
     ret									;Retorno de la subrutina
-
-.dseg									;Inicio del segmento de datos en RAM
-
-pos: .byte 1							;Reserva 1 byte en memoria de datos para la variable pos (posición del mensaje)
-modo: .byte 1							;Reserva 1 byte en memoria de datos para la variable modo (modo de funcionamiento)
-
-.cseg									;Inicio del segmento de instrucciones
 
 MENSAJE:
 .db 0b11111111,0b11111111,0b00000110,0b00001100,0b00001100,0b00000110,0b11111111,0b11111111	;M
@@ -308,7 +301,7 @@ MENSAJE:
 .db 0b00000000,0b00000000,0b00000000,0b00000000,0b00000000,0b00000000,0b00000000,0b00000000	;Espacio
 .db 0x00								;Espacio para diferenciar entre caractéres																						
 
-.equ MSG_LEN = 171						;Longitud total del mensaje en bytes (carácteres * 9 (8 columnas + espacio))
+.equ TAMANO_MENSAJE = 171				;Longitud total del mensaje en bytes (8 columnas + espacio)
 
 CARA_FELIZ:
 .db 0b00000000,0b00110000,0b01000110,0b01000000,0b01000000,0b01000110,0b00110000,0b00000000
