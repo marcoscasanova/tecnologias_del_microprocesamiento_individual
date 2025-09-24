@@ -1,1 +1,3 @@
-Las evidencias del funcionamiento correcto del plotter a través del código de configuración del entorno e inicialización del mismo, se observan en el video de evidencia del Problema E que implementa en exactitud el código base del Problema D, y agrega las rutinas de trazado y dibujo de figuras.
+Las evidencias del funcionamiento correcto del plotter a través del código de configuración del entorno e inicialización del mismo,
+se observan en el video de evidencia del Problema E que implementa en exactitud el código base del Problema D, y agrega las rutinas
+de trazado y dibujo de figuras.
