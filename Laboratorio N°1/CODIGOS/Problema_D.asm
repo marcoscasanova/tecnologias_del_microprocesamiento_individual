@@ -25,16 +25,6 @@ INICIO:
 	ldi r16, 0x00						;Carga inmediatamente el valor 0 en el registro r16
 	out PORTD, r16						;Pone en nivel bajo los pines del puerto D asignados como salidas
 
-    ldi r16, LOW(bps)
-    sts UBRR0L, r16						;Configura la parte baja del divisor de baudios (UBRR0L en 0xC4)
-    ldi r16, HIGH(bps)
-    sts UBRR0H, r16						;Configura la parte alta del divisor de baudios (UBRR0H en 0xC5)
-
-    ldi r16, (1<<RXEN0)|(1<<TXEN0)		;Habilita la recepción (RX) y transmisión (TX) de la UART
-    sts UCSR0B, r16						;Guarda la configuración en el registro de control UART B
-    ldi r16, (1<<UCSZ01)|(1<<UCSZ00)	;Configura el formato de datos de la UART en 8 bits
-    sts UCSR0C, r16						;Guarda la configuración en el registro de control UART C
-
 PLOTTER_SUBIR:
 	ldi r16, 0b00001000					;Activa bit PD3 para subir el solenoide
 	out PORTD, r16
