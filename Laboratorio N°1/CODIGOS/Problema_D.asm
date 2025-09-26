@@ -2,83 +2,107 @@
 ; Created: 20/9/2025 15:54:22
 ; Author: Marcos Casanova, Luis Bouvier, Santiago Moizo
 
-.equ F_CPU = 16000000						      ;Definimos la frecuencia con la que trabaja el microcontrolador
-.equ baud = 9600							        ;Definimos la velocidad con la que trabaja el microcontrolador
-.equ bps = (F_CPU/16/baud) - 1				;Definimos los baudios por segundo con los que trabaja el microcontrolador para una correcta comunicación con el mismo
+.equ F_CPU = 16000000					;Se define el valor de la variable F_CPU (frecuencia del microcontrolador)
+.equ baud = 9600						;Se define el valor de la variable baud (baudios)
+.equ bps = (F_CPU/16/baud) - 1			;Se define el valor de la variable bps (baudios por segundo) como el resultado de la operación indicada
 
-.cseg										              ;Inicio del segmento de instrucciones
-.org 0x00									            ;Direccion de inicio
-    rjmp INICIO								        ;Salto relativo a etiqueta INICIO
+.dseg									;Inicio del segmento de datos en RAM
+opcion: .byte 1							;Reserva 1 byte en memoria de datos para la variable opcion
+
+.cseg									;Inicio del segmento de instrucciones
+.org 0x00								;Direccion de inicio
+    rjmp INICIO							;Salto relativo a etiqueta INICIO
 
 INICIO:
-	ldi r16, LOW(RAMEND)					      ;Carga la parte baja de la dirección final de RAM en r16
-	out SPL, r16							          ;Configura el registro SPL (Stack Pointer Low) con ese valor
-	ldi r16, HIGH(RAMEND)					      ;Carga la parte alta de la dirección final de RAM en r16
-	out SPH, r16							          ;Configura el registro SPH (Stack Pointer High) con ese valor
+	ldi r16, LOW(RAMEND)				;Carga la parte baja de la dirección final de RAM en r16
+	out SPL, r16						;Configura el registro SPL (Stack Pointer Low) con ese valor
+	ldi r16, HIGH(RAMEND)				;Carga la parte alta de la dirección final de RAM en r16
+	out SPH, r16						;Configura el registro SPH (Stack Pointer High) con ese valor
 
-	ldi r16, 0xFC							          ;Carga inmediatamente el valor hexadecimal FC en el registro r16
-	out DDRD, r16							          ;Asignamos como salida los pines PD2, PD3, PD4, PD5, PD6 y PD7
+	ldi r16, 0xFC						;Carga inmediatamente el valor hexadecimal 0xFC en el registro r16
+	out DDRD, r16						;Asigna los pines PD2, PD3, PD4, PD5, PD6, PD7 como salidas
 
-	ldi r16, 0x00							          ;Carga inmediatamente el valor hexadecimal 00 en el registro r16
-	out PORTD, r16							        ;Carga en nivel bajo (0) los pines anteriormente asignados como salida del puerto D
+	ldi r16, 0x00						;Carga inmediatamente el valor 0 en el registro r16
+	out PORTD, r16						;Pone en nivel bajo los pines del puerto D asignados como salidas
 
-	rjmp MAIN_LOOP							        ;Salto relativo a la etiqueta MAIN_LOOP
+    ldi r16, LOW(bps)
+    sts UBRR0L, r16						;Configura la parte baja del divisor de baudios (UBRR0L en 0xC4)
+    ldi r16, HIGH(bps)
+    sts UBRR0H, r16						;Configura la parte alta del divisor de baudios (UBRR0H en 0xC5)
 
-MAIN_LOOP:
-	rcall MAIN_LOOP							        ;Llamada relativa a la subrutina MAIN_LOOP
-
-PLOTTER_BAJAR:
-    sbi PORTD, 2							        ;Coloca un 1 en el puerto PD2
-    rcall DELAY								        ;Llamada relativa a la rutina DELAY
-    ret										            ;Retorna de la rutina
+    ldi r16, (1<<RXEN0)|(1<<TXEN0)		;Habilita la recepción (RX) y transmisión (TX) de la UART
+    sts UCSR0B, r16						;Guarda la configuración en el registro de control UART B
+    ldi r16, (1<<UCSZ01)|(1<<UCSZ00)	;Configura el formato de datos de la UART en 8 bits
+    sts UCSR0C, r16						;Guarda la configuración en el registro de control UART C
 
 PLOTTER_SUBIR:
-    sbi PORTD, 3							        ;Coloca un 1 en el puerto PD3
-	rcall DELAY								          ;Llamada relativa a la rutina DELAY
-    ret										            ;Retorna de la rutina
+	ldi r16, 0b00001000					;Activa bit PD3 para subir el solenoide
+	out PORTD, r16
+	ldi r18, 5							;Mantiene el pulso un breve tiempo
+	rcall DELAY
+	ret
 
-PLOTTER_ARRIBA:		
-    sbi PORTD, 5							        ;Coloca un 1 en el puerto PD5
-    rcall DELAY								        ;Llamada relativa a la rutina DELAY
-    ret										            ;Retorna de la rutina
+PLOTTER_BAJAR:
+	ldi r16, 0b00000100					;Activa bit PD2 para bajar el solenoide
+	out PORTD, r16
+	ldi r18, 5							;Mantiene el pulso un breve tiempo
+	rcall DELAY
+	ret
+
+PLOTTER_ARRIBA_NO_BAJAR:
+	ldi r16, 0b00100000					;Activa PD5 para mover hacia arriba
+	out PORTD, r16
+	ret
+
+PLOTTER_ABAJO_NO_BAJAR:
+	ldi r16, 0b00010000					;Activa PD4 para mover hacia abajo
+	out PORTD, r16
+	ret
+
+PLOTTER_DERECHA_NO_BAJAR:
+	ldi r16, 0b01000000					;Activa PD6 para mover hacia la derecha
+	out PORTD, r16
+	ret
+
+PLOTTER_IZQUIERDA_NO_BAJAR:
+	ldi r16, 0b10000000					;Activa PD7 para mover hacia la izquierda
+	out PORTD, r16
+	ret
+
+PLOTTER_ARRIBA:
+	ldi r16, 0b00100100					;Activa PD5 (arriba) y PD2 (bajar solenoide)
+	out PORTD, r16
+	ret
 
 PLOTTER_ABAJO:
-    sbi PORTD, 4							        ;Coloca un 1 en el puerto PD4
-    rcall DELAY								        ;Llamada relativa a la rutina DELAY
-    ret										            ;Retorna de la rutina
+	ldi r16, 0b00010100					;Activa PD4 (abajo) y PD2 (bajar solenoide)
+	out PORTD, r16
+	ret
 
 PLOTTER_DERECHA:
-    sbi PORTD, 7							        ;Coloca un 1 en el puerto PD7
-    rcall DELAY								        ;Llamada relativa a la rutina DELAY
-    ret										            ;Retorna de la rutina
+	ldi r16, 0b01000100					;Activa PD6 (derecha) y PD2 (bajar solenoide)
+	out PORTD, r16
+	ret
 
 PLOTTER_IZQUIERDA:
-    sbi PORTD, 6							        ;Coloca un 1 en el puerto PD6
-    rcall DELAY								        ;Llamada relativa a la rutina DELAY
-    ret	
+	ldi r16, 0b10000100					;Activa PD7 (izquierda) y PD2 (bajar solenoide)
+	out PORTD, r16
+	ret
 
-DELAY:										            ;Anidamos 4 bucles para lograr un décimo de segundo con r18 = 1 y modificando el valor de este registro obtenemos un delay personalizado cuando se llame al mismo
-    ldi r20, 100							        ;Carga inmediatamente el valor 100 en el registro r20 (bucle)
+DELAY:
+;Se anidan varios bucles con diferentes registros para lograr un décimo exacto de segundo, y a través del registro r18 darle el valor deseado para cada figura / secuencia
+    ldi r20, 100						;Carga el contador externo
 DELAY_1:
-    ldi  r24, 32							        ;Carga inmediatamente el valor 32 en el registro r24 (bucle)
-DELAY_2:	
-    ldi  r25, 166							        ;Carga inmediatamente el valor 166 en el registro r25 (bucle)
+    ldi  r24, 32						;Carga el contador medio
+DELAY_2:
+    ldi  r25, 166						;Carga el contador interno
 DELAY_3:
-    dec  r25								          ;Decrementa el valor del registro r25
-    brne DELAY_3							        ;Salta a la etiqueta DELAY_3 si el valor de r25 no es 0
-    dec  r24								          ;Decrementa el valor del registro r24
-    brne DELAY_2							        ;Salta a la etiqueta DELAY_2 si el valor de r24 no es 0
-    dec  r20								          ;Decrementa el valor del registro r20
-    brne DELAY_1							        ;Salta a la etiqueta DELAY_1 si el valor de r20 no es 0
-    dec  r18								          ;Decrementa el valor de registro r18
-    brne DELAY								        ;Salta a la etiqueta DELAY si el valor de r18 no es 0
-    ret										            ;Retorna de la rutina
-
-MODO_REPOSO:
-    cbi PORTD, 2							        ;Coloca un 0 en el puerto PD2
-    sbi PORTD, 3							        ;Coloca un 1 en el puerto PD3
-    cbi PORTD, 4							        ;Coloca un 0 en el puerto PD4
-    cbi PORTD, 5							        ;Coloca un 0 en el puerto PD5
-    cbi PORTD, 6							        ;Coloca un 0 en el puerto PD6
-    cbi PORTD, 7							        ;Coloca un 0 en el puerto PD7
-    ret										            ;Retorna de la rutina
+    dec  r25							;Decrementa el contador interno
+    brne DELAY_3						;Repite hasta llegar a 0
+    dec  r24							;Decrementa el contador medio
+    brne DELAY_2
+    dec  r20							;Decrementa el contador externo
+    brne DELAY_1
+    dec  r18							;Decrementa el argumento de duración
+    brne DELAY
+    ret									;Retorno al final de la espera
