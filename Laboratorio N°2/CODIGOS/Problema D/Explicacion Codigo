@@ -1,0 +1,4 @@
+Debido a que se realizo la mayoria del problema D utilizando una MacBook con sistema operativo Mac OS, solo se pudo trabajar con Arduino IDE,
+asi que se cargo el codigo directamente al arduino desde el programa a diferencia de que si se hubiera hecho desde Microchip Studio.
+En el Arduino IDE se escribe el sketch, elegís Board = Arduino Uno y el Puerto, y le das Upload: el IDE compila y sube por el bootloader
+vía USB. En Microchip Studio se graba directo a la flash por el conector ICSP.
